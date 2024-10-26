@@ -3,6 +3,8 @@ use crate::{
     types::{Uuid, VarString},
 };
 
+struct Property {}
+
 pub struct SLoginSuccess {
     uuid: Uuid,
     username: VarString,
