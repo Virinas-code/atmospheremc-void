@@ -62,7 +62,7 @@ fn main() {
     log::info!(target: "Main thread", "Starting server...");
 
     let listener: TcpListener =
-        TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 25565)).unwrap();
+        TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 2565)).unwrap();
 
     log::info!(target: "Main thread", "Server ready!");
 
