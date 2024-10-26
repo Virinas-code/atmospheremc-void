@@ -10,125 +10,148 @@
     clippy::cargo,
     clippy::indexing_slicing
 )]
-use core::str;
 use std::{
-    error::Error,
-    io::{prelude::*, BufReader},
+    collections::VecDeque,
+    convert::identity,
+    io::{Read, Write},
     net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream},
-    thread::{self, JoinHandle},
+    thread,
+    time::Duration,
 };
 
-use env_logger::Env;
+use env_logger::fmt::style::Style;
 
-type VarInt = i16;
-type UnsignedShort = u16;
+use crate::protocol::{
+    HandshakeServerBoundPacket, PacketParseError, StateEnum, StatusServerBoundPacket,
+};
+use crate::state::ServerState;
+use crate::types::{byte, DataTypeDecodeError, VarInt};
 
-const SEGMENT_BITS: u8 = 0x7F;
-const CONTINUE_BIT: u8 = 0x80;
-
-fn read_varint<T: Read>(mut buf: BufReader<T>) -> Result<VarInt, Box<dyn Error>> {
-    let mut value: i16 = 0;
-    let mut position: i16 = 0;
-    let current_byte: u8 = 0;
-
-    loop {
-        buf.read(&mut [current_byte; 1])?;
-        value |= ((current_byte & SEGMENT_BITS) << position) as i16;
-
-        if (current_byte & CONTINUE_BIT) == 0 {
-            break;
-        };
-
-        position += 7;
-
-        if position >= 32 {
-            return Err(Box::from("VarInt is too big"));
-        }
-    }
-
-    return Ok(value);
-}
-
-fn read_string<T: Read>(mut buf: BufReader<T>) -> Result<String, Box<dyn Error>> {
-    let size: VarInt = read_varint(buf)?;
-
-    buf.read(&mut [buffer; size]);
-
-    str::from_utf8(v)
-}
-
-enum VarIntEnumState {
-    Status,
-    Login,
-    Transfer,
-}
-
-impl TryFrom<VarInt> for VarIntEnumState {
-    type Error = Box<dyn Error>;
-
-    fn try_from(value: VarInt) -> Result<Self, Self::Error> {
-        Ok(match value {
-            1 => Self::Status,
-            2 => Self::Login,
-            3 => Self::Transfer,
-            other => return Err(Box::from(format!("Invalid state: {other}"))),
-        })
-    }
-}
-
-trait Serverbound {
-    fn parse_impl<T: Read>(buf: BufReader<T>) -> Result<Self, Box<dyn Error>>
-    where
-        Self: Sized;
-}
-
-struct Handshake {
-    protocol_version: VarInt,
-    server_address: String,
-    server_port: UnsignedShort,
-    next_state: VarIntEnumState,
-}
-
-impl Serverbound for Handshake {
-    fn parse_impl<T: Read>(buf: BufReader<T>) -> Result<Self, Box<dyn Error>>
-    where
-        Self: Sized,
-    {
-        Ok(Self {
-            protocol_version: read_varint(buf)?,
-            server_address: read_string(buf),
-            server_port: read_unsigned_short(buf),
-            next_state: VarIntEnumState::try_from(read_varint(buf)?)?,
-        })
-    }
-}
+mod protocol;
+mod state;
+mod types;
 
 fn main() {
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
+    let mut builder = env_logger::Builder::from_default_env();
+
+    builder
+        .format(|buf, record| {
+            let style = buf.default_level_style(record.level());
+
+            let bold = Style::new().bold();
+            let underline = Style::new().underline();
+            let dimmed = Style::new().dimmed();
+
+            writeln!(
+                buf,
+                "{bold}{underline}[{3}]{bold:#}{underline:#} {style}{bold}<{0: <5}>{bold:#}{style:#} {style}{1}{style:#} {dimmed}{2} - {4}{dimmed:#}",
+                record.level(),
+                record.args(),
+                record.module_path().map_or("-", identity),
+                record.target(),
+                buf.timestamp_seconds(),
+            )
+        })
+        .filter(None, log::LevelFilter::Trace)
+        .write_style(env_logger::WriteStyle::Always)
+        .format_timestamp(None)
+        .format_module_path(true)
+        .format_indent(Some(8))
+        .init();
+
+    log::info!(target: "Main thread", "Starting server...");
 
     let listener: TcpListener =
         TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 25565)).unwrap();
 
-    let mut thread_pool: Vec<JoinHandle<()>> = Vec::new();
+    log::info!(target: "Main thread", "Server ready!");
 
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => thread_pool.push(thread::spawn(|| handle_connection(stream))),
-            Err(e) => log::error!("{}", e),
+            Ok(stream) => {
+                thread::spawn(|| handle_connection(stream));
+            }
+            Err(e) => log::error!(target: "Main thread", "{}", e),
         }
     }
 }
 
 fn handle_connection(mut stream: TcpStream) {
-    // --snip--
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
 
-    let mut buf_reader = BufReader::new(&mut stream);
-    let mut http_request: Vec<u8> = Vec::new();
+    let addr: &str = &(match stream.peer_addr() {
+        Ok(a) => format!("Client {a}"),
+        Err(e) => format!("Client {e}"),
+    });
 
-    match buf_reader.read_to_end(&mut http_request) {
-        Ok(ok) => log::debug!("Ok value: {ok}"),
-        Err(e) => log::error!("ERROR: {e}"),
+    log::info!(target: addr, "Opening connection");
+
+    let mut server_state: ServerState = ServerState::Handshake;
+
+    loop {
+        // Read packet length
+        // We read it byte after byte since we can't predict its size at all
+        match VarInt::try_from(&mut stream) {
+            Ok(length) => {
+                if length == VarInt(0) {
+                    // log::warn!(target: addr, "Unknown packet of length 0!");
+                    // if let Err(e) = stream.read(&mut [0; 1]) {
+                    //     log::error!(target: addr, "Failed to read stream: {e}");
+                    //     break;
+                    // };
+                    break; // Fuck it
+                }
+                log::trace!(target: addr, "Reading packet of length {length}");
+                match handle_packet(&mut stream, length, addr, server_state) {
+                    Ok(s) => {
+                        if s == ServerState::Closed {
+                            log::info!(target: addr, "Gracefully closing connection");
+                            break;
+                        };
+                        server_state = s;
+                    }
+                    Err(e) => log::error!(target: addr, "Failed to handle packet: {e}"),
+                }
+            }
+            Err(e) => log::error!(target: addr, "Failed to read packet length: {e}"),
+        }
     }
 
-    log::debug!("Request: {http_request:X?}");
+    log::info!(target: addr, "Closing connection");
+}
+
+fn handle_packet(
+    stream: &mut TcpStream,
+    length: VarInt,
+    addr: &str,
+    server_state: ServerState,
+) -> Result<ServerState, PacketParseError> {
+    let mut request: Vec<byte> =
+        vec![0; usize::try_from(length.0).map_err(DataTypeDecodeError::from)?];
+    stream
+        .read_exact(&mut request)
+        .map_err(|_| DataTypeDecodeError::PrematureEnd)?;
+
+    log::trace!(target: addr, "Request: {request:X?}");
+
+    let deque: VecDeque<byte> = VecDeque::from(request);
+
+    Ok(match server_state {
+        ServerState::Handshake => {
+            let packet = HandshakeServerBoundPacket::try_from(deque)?;
+            packet.handle(server_state, addr, stream)
+        }
+        ServerState::Status => {
+            let packet = StatusServerBoundPacket::try_from(deque)?;
+            packet.handle(server_state, addr, stream)
+        }
+        ServerState::Closed => {
+            log::error!(target: addr, "Unexpected data while in closed state");
+            ServerState::Closed
+        }
+        other => {
+            log::error!(target: addr, "Unsupported state: {other:?}");
+            other
+        }
+    })
 }
