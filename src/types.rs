@@ -243,6 +243,77 @@ impl TryFrom<&mut VecDeque<byte>> for VarString {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct Uuid(u128);
+
+impl DataType<'_, u128> for Uuid {}
+
+impl From<u128> for Uuid {
+    fn from(value: u128) -> Self {
+        Self(value)
+    }
+}
+
+impl TryFrom<&mut VecDeque<u8>> for Uuid {
+    type Error = DataTypeDecodeError;
+
+    fn try_from(value: &mut VecDeque<u8>) -> Result<Self, Self::Error> {
+        Ok(Self(u128::from_be_bytes(
+            drain(value, 0..16)?
+                .try_into()
+                .map_err(|_| DataTypeDecodeError::PrematureEnd)?,
+        )))
+    }
+}
+
+impl From<Uuid> for Vec<u8> {
+    fn from(value: Uuid) -> Self {
+        Vec::from(value.0.to_be_bytes())
+    }
+}
+
+#[derive(Clone)]
+pub struct Array<T>(Vec<T>)
+where
+    T: for<'a> DataType<'a, T> + Clone;
+
+impl<T: for<'a> DataType<'a, T>> DataType<'_, Vec<T>> for Array<T> {}
+
+impl<T: for<'a> DataType<'a, T>> From<Vec<T>> for Array<T> {
+    fn from(value: Vec<T>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T: for<'a> DataType<'a, T>> TryFrom<&mut VecDeque<u8>> for Array<T> {
+    type Error = DataTypeDecodeError;
+
+    fn try_from(value: &mut VecDeque<u8>) -> Result<Self, Self::Error> {
+        let length: i32 = VarInt::try_from(&mut *value)?.0;
+        let mut result: Vec<T> = Vec::new();
+
+        for _ in 0..length {
+            result.push(T::try_from(value)?);
+        }
+
+        Ok(Array(result))
+    }
+}
+
+impl<T: for<'a> DataType<'a, T>> From<Array<T>> for Vec<u8> {
+    fn from(value: Array<T>) -> Self {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        // TODO: Don't
+        let mut bytes: Vec<u8> = VarInt(value.0.len() as i32).into();
+
+        for item in value.0 {
+            bytes.append(&mut item.into());
+        }
+
+        bytes
+    }
+}
+
 pub fn parse_unsigned_short(
     bytes: &mut VecDeque<byte>,
 ) -> Result<u16, DataTypeDecodeError> {
@@ -271,7 +342,7 @@ mod tests {
     //     ) -> Result<u16, DataTypeDecodeError> {
     //         Ok(
     //             (u16::from(bytes.pop_front().ok_or(DataTypeDecodeError::PrematureEnd)?)
-    //                 << 8)
+    //     )            << 8)
     //                 | u16::from(
     //                     bytes.pop_front().ok_or(DataTypeDecodeError::PrematureEnd)?,
     //                 ),
