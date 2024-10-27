@@ -1,4 +1,4 @@
-use crate::{protocol::packet::ClientboundPacket, types::VarString};
+use crate::{protocol::packet::ClientboundPacket, types::var::VarString};
 
 pub struct CStatusResponse {
     json_response: VarString,

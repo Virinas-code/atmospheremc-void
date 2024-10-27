@@ -25,7 +25,7 @@ use crate::protocol::{
     HandshakeServerBoundPacket, PacketParseError, StateEnum, StatusServerBoundPacket,
 };
 use crate::state::ServerState;
-use crate::types::{byte, DataTypeDecodeError, VarInt};
+use crate::types::{var::VarInt, DataTypeDecodeError};
 
 mod protocol;
 mod state;
@@ -126,7 +126,7 @@ fn handle_packet(
     addr: &str,
     server_state: ServerState,
 ) -> Result<ServerState, PacketParseError> {
-    let mut request: Vec<byte> =
+    let mut request: Vec<u8> =
         vec![0; usize::try_from(length.0).map_err(DataTypeDecodeError::from)?];
     stream
         .read_exact(&mut request)
@@ -134,7 +134,7 @@ fn handle_packet(
 
     log::trace!(target: addr, "Request: {request:X?}");
 
-    let deque: VecDeque<byte> = VecDeque::from(request);
+    let deque: VecDeque<u8> = VecDeque::from(request);
 
     Ok(match server_state {
         ServerState::Handshake => {

@@ -22,7 +22,7 @@ impl ServerboundPacket for SPingRequest {
         Self: Sized,
     {
         Ok(Self {
-            time: types::parse_long(&mut bytes)?,
+            time: types::fixed::parse_long(&mut bytes)?,
         })
     }
 

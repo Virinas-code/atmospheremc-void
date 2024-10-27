@@ -5,7 +5,7 @@ use std::net::TcpStream;
 use thiserror::Error;
 
 use crate::state::ServerState;
-use crate::types::{self, VarInt};
+use crate::types::{self, var::VarInt};
 
 #[derive(Error, Debug)]
 pub enum PacketParseError {

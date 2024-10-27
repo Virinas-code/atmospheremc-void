@@ -46,7 +46,7 @@ impl TryFrom<VecDeque<u8>> for HandshakeServerBoundPacket {
     type Error = PacketParseError;
 
     fn try_from(mut value: VecDeque<u8>) -> Result<Self, Self::Error> {
-        let packet_id: i32 = types::VarInt::try_from(&mut value)?.0;
+        let packet_id: i32 = types::var::VarInt::try_from(&mut value)?.0;
 
         Self::parse(packet_id, value)
     }

@@ -13,14 +13,14 @@ enum State {
     Transfer,
 }
 
-impl TryFrom<types::VarInt> for State {
+impl TryFrom<types::var::VarInt> for State {
     type Error = types::DataTypeDecodeError;
 
-    fn try_from(value: types::VarInt) -> Result<Self, Self::Error> {
+    fn try_from(value: types::var::VarInt) -> Result<Self, Self::Error> {
         Ok(match value {
-            types::VarInt(1) => Self::Status,
-            types::VarInt(2) => Self::Login,
-            types::VarInt(3) => Self::Transfer,
+            types::var::VarInt(1) => Self::Status,
+            types::var::VarInt(2) => Self::Login,
+            types::var::VarInt(3) => Self::Transfer,
             other => {
                 return Err(types::DataTypeDecodeError::InvalidVarIntEnumVariant {
                     variant: other,
@@ -32,8 +32,8 @@ impl TryFrom<types::VarInt> for State {
 }
 #[derive(Debug)]
 pub struct SHandshake {
-    protocol_version: types::VarInt,
-    server_address: types::VarString,
+    protocol_version: types::var::VarInt,
+    server_address: types::var::VarString,
     server_port: u16,
     next_state: State,
 }
@@ -46,10 +46,10 @@ impl ServerboundPacket for SHandshake {
         Self: Sized,
     {
         Ok(Self {
-            protocol_version: types::VarInt::try_from(&mut bytes)?,
-            server_address: types::VarString::try_from(&mut bytes)?,
-            server_port: types::parse_unsigned_short(&mut bytes)?,
-            next_state: State::try_from(types::VarInt::try_from(&mut bytes)?)?,
+            protocol_version: types::var::VarInt::try_from(&mut bytes)?,
+            server_address: types::var::VarString::try_from(&mut bytes)?,
+            server_port: types::fixed::parse_unsigned_short(&mut bytes)?,
+            next_state: State::try_from(types::var::VarInt::try_from(&mut bytes)?)?,
         })
     }
 
@@ -59,7 +59,7 @@ impl ServerboundPacket for SHandshake {
         addr: &str,
         _stream: &mut TcpStream,
     ) -> ServerState {
-        if self.protocol_version != types::VarInt(768) {
+        if self.protocol_version != types::var::VarInt(768) {
             log::warn!(
                 target: addr,
                 "Received protocol version `{0}` instead of 1.21.2 `768` ; continuing",
