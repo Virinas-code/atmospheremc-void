@@ -3,7 +3,7 @@ use std::{collections::VecDeque, net::TcpStream};
 use crate::{
     protocol::packet::{PacketParseError, ServerboundPacket},
     state::ServerState,
-    types,
+    types::{self, DataType, DataTypeEncodeError},
 };
 
 #[derive(Debug)]
@@ -46,10 +46,10 @@ impl ServerboundPacket for SHandshake {
         Self: Sized,
     {
         Ok(Self {
-            protocol_version: types::var::VarInt::try_from(&mut bytes)?,
-            server_address: types::var::VarString::try_from(&mut bytes)?,
-            server_port: types::fixed::parse_unsigned_short(&mut bytes)?,
-            next_state: State::try_from(types::var::VarInt::try_from(&mut bytes)?)?,
+            protocol_version: types::var::VarInt::decode(&mut bytes)?,
+            server_address: types::var::VarString::decode(&mut bytes)?,
+            server_port: u16::decode(&mut bytes)?,
+            next_state: State::try_from(types::var::VarInt::decode(&mut bytes)?)?,
         })
     }
 
@@ -58,7 +58,7 @@ impl ServerboundPacket for SHandshake {
         _server_state: ServerState,
         addr: &str,
         _stream: &mut TcpStream,
-    ) -> ServerState {
+    ) -> Result<ServerState, DataTypeEncodeError> {
         if self.protocol_version != types::var::VarInt(768) {
             log::warn!(
                 target: addr,
@@ -69,16 +69,16 @@ impl ServerboundPacket for SHandshake {
 
         log::info!(
             target: addr,
-            "Connected to {0}:{1} - Switching to {2:?} state",
+            "Connected to {0:?}:{1} - Switching to {2:?} state",
             self.server_address,
             self.server_port,
             self.next_state
         );
 
-        match self.next_state {
+        Ok(match self.next_state {
             State::Status => ServerState::Status,
             State::Login => ServerState::Login,
             State::Transfer => ServerState::Play,
-        }
+        })
     }
 }

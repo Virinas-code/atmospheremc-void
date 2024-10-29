@@ -6,7 +6,7 @@ use crate::{
         status::ping_response::CPingResponse,
     },
     state::ServerState,
-    types,
+    types::{DataType, DataTypeEncodeError},
 };
 
 #[derive(Debug)]
@@ -22,7 +22,7 @@ impl ServerboundPacket for SPingRequest {
         Self: Sized,
     {
         Ok(Self {
-            time: types::fixed::parse_long(&mut bytes)?,
+            time: i64::decode(&mut bytes)?,
         })
     }
 
@@ -31,13 +31,13 @@ impl ServerboundPacket for SPingRequest {
         _server_state: ServerState,
         addr: &str,
         stream: &mut TcpStream,
-    ) -> ServerState {
+    ) -> Result<ServerState, DataTypeEncodeError> {
         log::debug!(target: addr, "Received ping request at {}", self.time);
 
         let packet: CPingResponse = CPingResponse::new(self.time);
 
-        packet.send(addr, stream);
+        packet.send(addr, stream)?;
 
-        ServerState::Closed
+        Ok(ServerState::Closed)
     }
 }

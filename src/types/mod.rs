@@ -1,5 +1,8 @@
 use std::{
-    collections::VecDeque, num::TryFromIntError, ops::RangeBounds, string::FromUtf8Error,
+    collections::VecDeque,
+    io::{self, Read, Write},
+    num::TryFromIntError,
+    string::FromUtf8Error,
 };
 
 use thiserror::Error;
@@ -8,26 +11,26 @@ pub mod macros;
 mod test;
 pub mod var;
 
-fn drain<R>(bytes: &mut VecDeque<u8>, range: R) -> Result<Vec<u8>, DataTypeDecodeError>
-where
-    R: RangeBounds<usize> + Iterator,
-{
-    let mut output: Vec<u8> = Vec::new();
-    for _ in range {
-        output.push(bytes.pop_front().ok_or_else(|| {
-            DataTypeDecodeError::PrematureEndOfVarNumber(bytes.clone())
-        })?);
-    }
-    Ok(output)
-}
+// fn drain<R>(bytes: &impl Read, range: R) -> Result<Vec<u8>, DataTypeDecodeError>
+// where
+//     R: RangeBounds<usize> + Iterator,
+// {
+//     let mut output: Vec<u8> = Vec::new();
+//     for _ in range {
+//         output.push(bytes.rea().ok_or_else(|| {
+//             DataTypeDecodeError::PrematureEndOfVarNumber(bytes.clone())
+//         })?);
+//     }
+//     Ok(output)
+// }
 
-#[derive(Error, Debug, PartialEq, Eq)]
+#[derive(Error, Debug)]
 pub enum DataTypeDecodeError {
     #[error("VarNumber ended prematurely: {0:X?}")]
     PrematureEndOfVarNumber(VecDeque<u8>),
 
-    #[error("VarNumber too big: {0:X?}")]
-    VarNumberTooBig(VecDeque<u8>),
+    #[error("VarNumber too big")]
+    VarNumberTooBig,
 
     #[error(transparent)]
     TryFromIntError(#[from] TryFromIntError),
@@ -43,12 +46,18 @@ pub enum DataTypeDecodeError {
         variant: var::VarInt,
         enumeration: String,
     },
+
+    #[error(transparent)]
+    IOError(#[from] io::Error),
 }
 
 #[derive(Error, Debug)]
 pub enum DataTypeEncodeError {
     #[error(transparent)]
     TryFromIntError(#[from] TryFromIntError),
+
+    #[error(transparent)]
+    IOError(#[from] io::Error),
 }
 
 #[allow(dead_code)] // I swear this is useful
@@ -59,7 +68,7 @@ pub trait DataType<Inner>: Clone {
 
     fn get_ref(&self) -> &Inner;
 
-    fn decode(value: &mut VecDeque<u8>) -> Result<Self, DataTypeDecodeError>;
+    fn decode(from: &mut impl Read) -> Result<Self, DataTypeDecodeError>;
 
-    fn encode(&self) -> Result<Vec<u8>, DataTypeEncodeError>;
+    fn encode(&self, to: &mut impl Write) -> Result<(), DataTypeEncodeError>;
 }

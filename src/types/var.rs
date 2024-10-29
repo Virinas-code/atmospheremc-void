@@ -1,8 +1,13 @@
-use std::{collections::VecDeque, fmt::Display, io::Read, net::TcpStream};
+use std::{
+    collections::VecDeque,
+    fmt::Display,
+    io::{Read, Write},
+    net::TcpStream,
+};
 
-use crate::add_tuple_impl;
+use crate::{add_tuple_impl, read_byte, read_bytes};
 
-use super::{drain, DataType, DataTypeDecodeError, DataTypeEncodeError};
+use super::{DataType, DataTypeDecodeError, DataTypeEncodeError};
 
 const SEGMENT_BITS: i32 = 0x7F;
 const CONTINUE_BIT: i32 = 0x80;
@@ -19,35 +24,35 @@ impl Display for VarInt {
 impl DataType<i32> for VarInt {
     add_tuple_impl!(VarInt i32);
 
-    fn encode(&self) -> Result<Vec<u8>, DataTypeEncodeError> {
+    fn encode(&self, to: &mut impl Write) -> Result<(), DataTypeEncodeError> {
         #[allow(clippy::cast_sign_loss)]
         let mut value: u32 = self.0 as u32;
-        let mut bytes: Vec<u8> = Vec::new();
+        // let mut bytes: Vec<u8> = Vec::new();
 
-        Ok(loop {
+        loop {
             #[allow(clippy::cast_sign_loss)]
             if (value & !SEGMENT_BITS as u32) == 0 {
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                bytes.push(value as u8);
-                break bytes;
+                to.write_all(&[value as u8])?;
+                break;
             }
 
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            bytes.push(((value & SEGMENT_BITS as u32) | CONTINUE_BIT as u32) as u8);
+            to.write_all(&[((value & SEGMENT_BITS as u32) | CONTINUE_BIT as u32) as u8])?;
 
             value >>= 7;
-        })
+        }
+
+        Ok(())
     }
 
-    fn decode(bytes: &mut VecDeque<u8>) -> Result<Self, DataTypeDecodeError> {
+    fn decode(from: &mut impl Read) -> Result<Self, DataTypeDecodeError> {
         let mut value: i32 = 0;
         let mut position: u8 = 0;
         let mut current_byte: u8;
 
         loop {
-            current_byte = bytes.pop_front().ok_or_else(|| {
-                DataTypeDecodeError::PrematureEndOfVarNumber(bytes.clone())
-            })?;
+            current_byte = read_byte!(from)?;
             value |= (i32::from(current_byte) & SEGMENT_BITS) << position;
 
             if (i32::from(current_byte) & CONTINUE_BIT) == 0 {
@@ -57,7 +62,7 @@ impl DataType<i32> for VarInt {
             position += 7;
 
             if position >= 32 {
-                break Err(DataTypeDecodeError::VarNumberTooBig(bytes.clone()));
+                break Err(DataTypeDecodeError::VarNumberTooBig);
             }
         }
     }
@@ -85,7 +90,7 @@ impl TryFrom<&mut TcpStream> for VarInt {
             position += 7;
 
             if position >= 32 {
-                break Err(DataTypeDecodeError::VarNumberTooBig(VecDeque::new()));
+                break Err(DataTypeDecodeError::VarNumberTooBig);
             }
         }
     }
@@ -107,38 +112,34 @@ impl DataType<String> for VarString {
         &self.0
     }
 
-    fn decode(value: &mut VecDeque<u8>) -> Result<Self, DataTypeDecodeError> {
-        let byte_size: usize = usize::try_from(VarInt::decode(&mut *value)?.0)?;
+    fn decode(from: &mut impl Read) -> Result<Self, DataTypeDecodeError> {
+        let byte_size: usize = usize::try_from(VarInt::decode(&mut *from)?.0)?;
 
-        Ok(Self(String::from_utf8(drain(value, 0..byte_size)?)?))
+        Ok(Self(String::from_utf8(read_bytes!(from, byte_size)?)?))
     }
 
-    fn encode(&self) -> Result<Vec<u8>, DataTypeEncodeError> {
-        let mut bytes: Vec<u8> = VarInt(i32::try_from(self.0.len())?).encode()?;
+    fn encode(&self, to: &mut impl Write) -> Result<(), DataTypeEncodeError> {
+        VarInt::new(i32::try_from(self.0.len())?).encode(to)?;
 
-        println!("Length {bytes:?}");
+        to.write_all(self.0.as_bytes())?;
 
-        bytes.extend_from_slice(self.0.as_bytes());
-
-        Ok(bytes)
+        Ok(())
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct VarLong(i64);
 
 impl DataType<i64> for VarLong {
     add_tuple_impl!(VarLong i64);
 
-    fn decode(bytes: &mut VecDeque<u8>) -> Result<Self, DataTypeDecodeError> {
+    fn decode(from: &mut impl Read) -> Result<Self, DataTypeDecodeError> {
         let mut value: i64 = 0;
         let mut position: u8 = 0;
         let mut current_byte: u8;
 
         loop {
-            current_byte = bytes.pop_front().ok_or_else(|| {
-                DataTypeDecodeError::PrematureEndOfVarNumber(bytes.clone())
-            })?;
+            current_byte = read_byte!(from)?;
             value |= (i64::from(current_byte) & i64::from(SEGMENT_BITS)) << position;
 
             if (i64::from(current_byte) & i64::from(CONTINUE_BIT)) == 0 {
@@ -148,28 +149,29 @@ impl DataType<i64> for VarLong {
             position += 7;
 
             if position >= 64 {
-                break Err(DataTypeDecodeError::VarNumberTooBig(bytes.clone()));
+                break Err(DataTypeDecodeError::VarNumberTooBig);
             }
         }
     }
 
-    fn encode(&self) -> Result<Vec<u8>, DataTypeEncodeError> {
+    fn encode(&self, to: &mut impl Write) -> Result<(), DataTypeEncodeError> {
         #[allow(clippy::cast_sign_loss)]
         let mut value: u64 = self.0 as u64;
-        let mut bytes: Vec<u8> = Vec::new();
 
-        Ok(loop {
+        loop {
             #[allow(clippy::cast_sign_loss)]
             if (value & !SEGMENT_BITS as u64) == 0 {
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                bytes.push(value as u8);
-                break bytes;
+                to.write_all(&[value as u8])?;
+                break;
             }
 
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            bytes.push(((value & SEGMENT_BITS as u64) | CONTINUE_BIT as u64) as u8);
+            to.write_all(&[((value & SEGMENT_BITS as u64) | CONTINUE_BIT as u64) as u8])?;
 
             value >>= 7;
-        })
+        }
+
+        Ok(())
     }
 }

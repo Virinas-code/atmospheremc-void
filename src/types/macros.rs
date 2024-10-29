@@ -1,6 +1,9 @@
-use std::{collections::VecDeque, mem::size_of};
+use std::{
+    io::{Read, Write},
+    mem::size_of,
+};
 
-use super::{drain, DataType, DataTypeDecodeError, DataTypeEncodeError};
+use super::{DataType, DataTypeDecodeError, DataTypeEncodeError};
 
 macro_rules! add_impl {
     ($($t:ty)*) => {$(
@@ -17,16 +20,18 @@ macro_rules! add_impl {
                 self
             }
 
-            fn decode(value: &mut VecDeque<u8>) -> Result<Self, DataTypeDecodeError> {
+            fn decode(from: &mut impl Read) -> Result<Self, DataTypeDecodeError> {
+                let mut buf: [u8; size_of::<$t>()] = [0; size_of::<$t>()];
+                from.read_exact(&mut buf)?;
+
                 Ok(<$t>::from_be_bytes(
-                    drain(value, 0..size_of::<$t>())?
-                        .try_into()
-                        .map_err(|_| DataTypeDecodeError::PrematureEnd)?,
+                    buf,
                 ))
             }
 
-            fn encode(&self) -> Result<Vec<u8>, DataTypeEncodeError> {
-                Ok(Vec::from(self.to_be_bytes()))
+            fn encode(&self, to: &mut impl Write) -> Result<(), DataTypeEncodeError> {
+                to.write_all(&self.to_be_bytes())?;
+                Ok(())
             }
         }
     )*};
@@ -34,6 +39,8 @@ macro_rules! add_impl {
 
 add_impl!(u8 u16 i64);
 
+/// Add an implementation of [`DataType::new`], [`DataType::get`] and
+/// [`DataType::get_ref`] for tuple structs.
 #[macro_export]
 macro_rules! add_tuple_impl {
     ($i:ident $t:ty) => {
@@ -49,4 +56,28 @@ macro_rules! add_tuple_impl {
             &self.0
         }
     };
+}
+
+/// Read a single byte from a [`Read`] object, returning a <code>[Result]\<[u8],
+/// [DataTypeDecodeError]></code>.
+#[macro_export]
+macro_rules! read_byte {
+    ($from:ident) => {{
+        let mut buf: [u8; 1] = [0; 1];
+        $from.read_exact(&mut buf)?;
+        let out: Result<u8, DataTypeDecodeError> = Ok(buf[0]);
+        out
+    }};
+}
+
+/// Read N bytes from a [`Read`] object, returning a <code>[Result]\<[u8],
+/// [DataTypeDecodeError]></code>.
+#[macro_export]
+macro_rules! read_bytes {
+    ($from:ident, $length:ident) => {{
+        let mut buf: Vec<u8> = vec![0; $length];
+        $from.read_exact(&mut buf)?;
+        let out: Result<Vec<u8>, DataTypeDecodeError> = Ok(buf);
+        out
+    }};
 }

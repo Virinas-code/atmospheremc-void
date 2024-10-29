@@ -17,8 +17,8 @@ mod tests {
             let parsed: Result<i64, DataTypeDecodeError> =
                 i64::decode(&mut VecDeque::from(bytes.clone()));
             assert_eq!(
-                parsed,
-                Ok(value),
+                *parsed.as_ref().unwrap(),
+                value,
                 "Parse returned {parsed:?} instead of {value} for {bytes:?}"
             );
         }
@@ -41,13 +41,16 @@ mod tests {
         ];
         for (bytes, value) in tests {
             // Value -> Bytes
-            let buf: Vec<u8> = VarInt::new(value).encode().expect("Encoding failed");
+            let mut buf: Vec<u8> = Vec::new();
+            VarInt::new(value)
+                .encode(&mut buf)
+                .expect("Encoding failed");
             assert_eq!(buf, bytes);
 
             // Bytes -> Value
             assert_eq!(
-                VarInt::decode(&mut VecDeque::from(bytes)),
-                Ok(VarInt(value))
+                VarInt::decode(&mut VecDeque::from(bytes)).unwrap(),
+                VarInt(value)
             );
         }
     }
@@ -81,13 +84,16 @@ mod tests {
         ];
         for (bytes, value) in tests {
             // Value -> Bytes
-            let buf: Vec<u8> = VarLong::new(value).encode().expect("Encoding failed");
+            let mut buf: Vec<u8> = Vec::new();
+            VarLong::new(value)
+                .encode(&mut buf)
+                .expect("Encoding failed");
             assert_eq!(buf, bytes);
 
             // Bytes -> Value
             assert_eq!(
-                VarLong::decode(&mut VecDeque::from(bytes)),
-                Ok(VarLong::new(value))
+                VarLong::decode(&mut VecDeque::from(bytes)).unwrap(),
+                VarLong::new(value)
             );
         }
     }

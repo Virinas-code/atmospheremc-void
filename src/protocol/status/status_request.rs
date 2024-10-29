@@ -6,6 +6,7 @@ use crate::{
         status::status_response::CStatusResponse,
     },
     state::ServerState,
+    types::DataTypeEncodeError,
 };
 
 const RESPONSE: &str = "{\"version\":{\"name\":\"1.21.2\",\"protocol\":768},\"players\":{\"max\":100,\"online\":5,\"sample\":[{\"name\":\"thinkofdeath\",\"id\":\"4566e69f-c907-48ee-8d71-d7ba5aa00d20\"}]},\"description\":{\"text\":\"Hello, world!\"},\"favicon\":\"data:image/png;base64,<data>\",\"enforcesSecureChat\":false}";
@@ -28,13 +29,13 @@ impl ServerboundPacket for SStatusRequest {
         server_state: ServerState,
         addr: &str,
         stream: &mut TcpStream,
-    ) -> ServerState {
+    ) -> Result<ServerState, DataTypeEncodeError> {
         log::debug!(target: addr, "Received status request");
 
         let packet: CStatusResponse = CStatusResponse::new(RESPONSE.to_string());
 
-        packet.send(addr, stream);
+        packet.send(addr, stream)?;
 
-        server_state
+        Ok(server_state)
     }
 }

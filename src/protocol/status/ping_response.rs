@@ -1,4 +1,9 @@
-use crate::protocol::packet::ClientboundPacket;
+use std::io::Write;
+
+use crate::{
+    protocol::packet::ClientboundPacket,
+    types::{DataType, DataTypeEncodeError},
+};
 
 pub struct CPingResponse {
     time: i64,
@@ -13,13 +18,9 @@ impl CPingResponse {
 impl ClientboundPacket for CPingResponse {
     const PACKET_ID: i32 = 0x01;
 
-    fn encode(&self) -> Vec<u8> {
-        let mut bytes: Vec<u8> = Vec::new();
+    fn encode(&self, to: &mut impl Write) -> Result<(), DataTypeEncodeError> {
+        self.time.encode(to)?;
 
-        let mut payload: Vec<u8> = self.time.to_be_bytes().to_vec();
-
-        bytes.append(&mut payload);
-
-        bytes
+        Ok(())
     }
 }
