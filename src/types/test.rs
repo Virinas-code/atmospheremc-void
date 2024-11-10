@@ -1,3 +1,4 @@
+//! Test [`crate::types`].
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;

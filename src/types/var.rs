@@ -1,3 +1,4 @@
+//! Variable length types (Var...).
 use std::{
     collections::VecDeque,
     fmt::Display,
@@ -5,13 +6,16 @@ use std::{
     net::TcpStream,
 };
 
-use crate::{add_tuple_impl, read_byte, read_bytes};
+use crate::add_tuple_impl;
 
-use super::{DataType, DataTypeDecodeError, DataTypeEncodeError};
+use super::{DataType, DataTypeDecodeError, DataTypeEncodeError, ReadBytes};
 
+/// Segment bits of a [`VarInt`] or [`VarLong`].
 const SEGMENT_BITS: i32 = 0x7F;
+/// Continue bit of a [`VarInt`] or [`VarLong`].
 const CONTINUE_BIT: i32 = 0x80;
 
+/// A variable length [`i32`].
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct VarInt(pub i32);
 
@@ -52,7 +56,7 @@ impl DataType<i32> for VarInt {
         let mut current_byte: u8;
 
         loop {
-            current_byte = read_byte!(from)?;
+            current_byte = from.read_byte()?;
             value |= (i32::from(current_byte) & SEGMENT_BITS) << position;
 
             if (i32::from(current_byte) & CONTINUE_BIT) == 0 {
@@ -96,6 +100,7 @@ impl TryFrom<&mut TcpStream> for VarInt {
     }
 }
 
+/// A variable length [`String`].
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct VarString(String);
 
@@ -115,7 +120,7 @@ impl DataType<String> for VarString {
     fn decode(from: &mut impl Read) -> Result<Self, DataTypeDecodeError> {
         let byte_size: usize = usize::try_from(VarInt::decode(&mut *from)?.0)?;
 
-        Ok(Self(String::from_utf8(read_bytes!(from, byte_size)?)?))
+        Ok(Self(String::from_utf8(from.read_bytes(byte_size)?)?))
     }
 
     fn encode(&self, to: &mut impl Write) -> Result<(), DataTypeEncodeError> {
@@ -127,6 +132,7 @@ impl DataType<String> for VarString {
     }
 }
 
+/// A variable length [`i64`].
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct VarLong(i64);
 
@@ -139,7 +145,7 @@ impl DataType<i64> for VarLong {
         let mut current_byte: u8;
 
         loop {
-            current_byte = read_byte!(from)?;
+            current_byte = from.read_byte()?;
             value |= (i64::from(current_byte) & i64::from(SEGMENT_BITS)) << position;
 
             if (i64::from(current_byte) & i64::from(CONTINUE_BIT)) == 0 {

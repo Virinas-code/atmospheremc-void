@@ -1,3 +1,4 @@
+//! Macros for implementing [`DataType`].
 use std::{
     io::{Read, Write},
     mem::size_of,
@@ -5,6 +6,7 @@ use std::{
 
 use super::{DataType, DataTypeDecodeError, DataTypeEncodeError};
 
+/// Add an implementation of [`DataType`] for primitives.
 macro_rules! add_impl {
     ($($t:ty)*) => {$(
         impl DataType<$t> for $t {
@@ -58,26 +60,26 @@ macro_rules! add_tuple_impl {
     };
 }
 
-/// Read a single byte from a [`Read`] object, returning a <code>[Result]\<[u8],
-/// [DataTypeDecodeError]></code>.
-#[macro_export]
-macro_rules! read_byte {
-    ($from:ident) => {{
-        let mut buf: [u8; 1] = [0; 1];
-        $from.read_exact(&mut buf)?;
-        let out: Result<u8, DataTypeDecodeError> = Ok(buf[0]);
-        out
-    }};
-}
+// /// Read a single byte from a [`Read`] object, returning a <code>[Result]\<[u8],
+// /// [DataTypeDecodeError]></code>.
+// #[macro_export]
+// macro_rules! read_byte {
+//     ($from:ident) => {{
+//         let mut buf: [u8; 1] = [0; 1];
+//         $from.read_exact(&mut buf)?;
+//         let out: Result<u8, DataTypeDecodeError> = Ok(buf[0]);
+//         out
+//     }};
+// }
 
-/// Read N bytes from a [`Read`] object, returning a <code>[Result]\<[u8],
-/// [DataTypeDecodeError]></code>.
-#[macro_export]
-macro_rules! read_bytes {
-    ($from:ident, $length:ident) => {{
-        let mut buf: Vec<u8> = vec![0; $length];
-        $from.read_exact(&mut buf)?;
-        let out: Result<Vec<u8>, DataTypeDecodeError> = Ok(buf);
-        out
-    }};
-}
+// /// Read N bytes from a [`Read`] object, returning a <code>[Result]\<[u8],
+// /// [DataTypeDecodeError]></code>.
+// #[macro_export]
+// macro_rules! read_bytes {
+//     ($from:ident, $length:ident) => {{
+//         let mut buf: Vec<u8> = vec![0; $length];
+//         $from.read_exact(&mut buf)?;
+//         let out: Result<Vec<u8>, DataTypeDecodeError> = Ok(buf);
+//         out
+//     }};
+// }

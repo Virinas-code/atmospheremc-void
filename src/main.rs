@@ -3,6 +3,7 @@
 //! The `AtmosphereMC` server.
 #![warn(
     missing_docs,
+    clippy::missing_docs_in_private_items,
     clippy::cargo_common_metadata,
     clippy::all,
     clippy::pedantic,
@@ -32,6 +33,7 @@ mod protocol;
 mod state;
 mod types;
 
+/// The legacy ping payload for clients before 1.7.
 const LEGACY_PING: [u8; 25] = [
     0xFA, 0x00, 0x0B, 0x00, 0x4D, 0x00, 0x43, 0x00, 0x7C, 0x00, 0x50, 0x00, 0x69, 0x00,
     0x6E, 0x00, 0x67, 0x00, 0x48, 0x00, 0x6F, 0x00, 0x73, 0x00, 0x00,
@@ -82,6 +84,7 @@ fn main() {
     }
 }
 
+/// Handle a client connection (in a separate thread).
 fn handle_connection(mut stream: TcpStream) -> Result<(), io::Error> {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
 
@@ -174,6 +177,7 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), io::Error> {
     Ok(())
 }
 
+/// Handle a packet received in [`handle_connection`].
 fn handle_packet(
     stream: &mut TcpStream,
     length: VarInt,
